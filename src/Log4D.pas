@@ -901,6 +901,7 @@ type
     FFileName: TFileName;
   protected
     procedure SetOption(const Name, Value: string); override;
+    function GetPatternFileName(const Name: string): string; virtual;
     procedure SetLogFile(const Name: string); virtual;
     procedure CloseLogFile; virtual;
   public
@@ -1070,7 +1071,7 @@ implementation
 
 {$IFDEF UNICODE}
 uses
-  Consts;
+  Vcl.Consts;
 {$ENDIF UNICODE}
 
 const
@@ -2973,37 +2974,60 @@ begin
   SetOption(FileNameOpt, FileName);
 end;
 
+function TLogFileAppender.GetPatternFileName(const Name: string): string;
+begin
+  Result :=  Name;
+end;
+
 { create file stream }
 procedure TLogFileAppender.SetLogFile(const Name: string);
+const
+  RETRY_COUNT = 20;
+  RETRY_DELAY = 250;
 var
   strPath: string;
-  f : TextFile;
+  f: TextFile;
+  retry: Integer;
 begin
   CloseLogFile;
   FFileName := Name;
-  if FAppend and FileExists(FFileName) then
+  retry := 0;
+  while True do
   begin
-    // append to existing file
+    try
+      if FAppend and FileExists(FFileName) then
+      begin
+        // append to existing file
+        FStream := TFileStream.Create(FFileName, fmOpenReadWrite or fmShareDenyWrite);
+        FStream.Seek(0, soFromEnd);
+      end
+      else
+      begin
+        // Check if directory exists
+        strPath := ExtractFileDir(FFileName);
+        if (strPath <> '') and not DirectoryExists(strPath) then
+          ForceDirectories(strPath);
 
-    FStream := TFileStream.Create(FFileName, fmOpenReadWrite or fmShareDenyWrite);
-    FStream.Seek(0, soFromEnd);
-  end
-  else
-  begin
-    // Check if directory exists
-    strPath := ExtractFileDir(FFileName);
-    if (strPath <> '') and  not DirectoryExists(strPath) then
-      ForceDirectories(strPath);
-
-    //FIX 04.10.2006 MHoenemann:
-    //  SysUtils.FileCreate() ignores any sharing option (like our fmShareDenyWrite),
-    // Creating new file
-    AssignFile(f, FFileName);
-    ReWrite(f);
-    CloseFile(f);
-    // now use this file
-    FStream := TFileStream.Create(FFileName, fmOpenReadWrite or fmShareDenyWrite);
-
+        //FIX 04.10.2006 MHoenemann:
+        //  SysUtils.FileCreate() ignores any sharing option (like our fmShareDenyWrite),
+        // Creating new file
+        AssignFile(f, FFileName);
+        Rewrite(f);
+        CloseFile(f);
+        // now use this file
+        FStream := TFileStream.Create(FFileName, fmOpenReadWrite or fmShareDenyWrite);
+      end;
+       Break;
+    except
+      //这里大约会等待最长5秒
+      if retry < RETRY_COUNT then
+      begin
+        Sleep(RETRY_DELAY);
+      end
+      else
+        raise;
+      Inc(retry);
+    end;
   end;
   WriteHeader;
 end;
@@ -3026,7 +3050,7 @@ begin
     end
     else if (Name = FileNameOpt) and (Value <> '') then
     begin
-      SetLogFile(Value);    // changed by adasen
+      SetLogFile(GetPatternFileName(Value));    // changed by adasen
     end;
   finally
     LeaveCriticalSection(FCriticalAppender);
@@ -3039,7 +3063,9 @@ procedure TLogRollingFileAppender.DoAppend(const msg: string);
 begin
   if assigned(FStream) and (FCurrentSize = 0) then
     FCurrentSize := FStream.Size;
-  FCurrentSize := FCurrentSize + Length(msg);   // should be faster than TFileStream.Size
+
+  //日志文件默认用的ANSI编码, 如果要换编码，这里也需要修改
+  FCurrentSize := FCurrentSize + Length(AnsiString(msg));   // should be faster than TFileStream.Size
   if (FStream <> nil) and (FCurrentSize > FMaxFileSize) then
   begin
     FCurrentSize := 0;
@@ -3110,7 +3136,6 @@ begin
   finally
     LeaveCriticalSection(FCriticalAppender);
   end;
-
 end;
 
 { OptionConvertors ------------------------------------------------------------}
