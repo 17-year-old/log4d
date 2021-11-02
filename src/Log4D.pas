@@ -3064,6 +3064,12 @@ begin
   if assigned(FStream) and (FCurrentSize = 0) then
     FCurrentSize := FStream.Size;
 
+  //这里修改为先写日志再判断大小
+  //如果刚开始的日志内容就很大，直接超过了FMaxFileSize
+  //先判断大小就会就会跳过第一个日志文件，实际日志文件还是空的
+  //改成这样后会导致日志文件大小超过FMaxFileSize
+  inherited;
+
   //日志文件默认用的ANSI编码, 如果要换编码，这里也需要修改
   FCurrentSize := FCurrentSize + Length(AnsiString(msg));   // should be faster than TFileStream.Size
   if (FStream <> nil) and (FCurrentSize > FMaxFileSize) then
@@ -3071,7 +3077,6 @@ begin
     FCurrentSize := 0;
     RollOver;
   end;
-  inherited;
 end;
 
 { set defaults }
