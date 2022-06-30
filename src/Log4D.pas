@@ -71,7 +71,10 @@ uses
 {$IFDEF HAS_UNIT_CONTNRS}
   Contnrs,
 {$ENDIF}
-  SysUtils;
+  SysUtils
+{$IFDEF DELPHICOMPILER25_UP},
+  Smit.Fileapi
+{$ENDIF};
 
 const
   Log4DVersion = '1.2.12';
@@ -2998,7 +3001,7 @@ begin
       if FAppend and FileExists(FFileName) then
       begin
         // append to existing file
-        FStream := TFileStream.Create(FFileName, fmOpenReadWrite or fmShareDenyWrite);
+        FStream := TFileStream.Create(FFileName, fmOpenReadWrite or fmShareDenyNone);
         FStream.Seek(0, soFromEnd);
       end
       else
@@ -3015,7 +3018,7 @@ begin
         Rewrite(f);
         CloseFile(f);
         // now use this file
-        FStream := TFileStream.Create(FFileName, fmOpenReadWrite or fmShareDenyWrite);
+        FStream := TFileStream.Create(FFileName, fmOpenReadWrite or fmShareDenyNone);
       end;
        Break;
     except
